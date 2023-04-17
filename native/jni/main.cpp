@@ -191,7 +191,7 @@ int main(int argc, const char **argv)
                         "-v            Verbose magic mount\n\n", basename(argv[0]));
         return 1;
     }
-    if (strcmp(argv[argc-1], "/dev") == 0) {
+    if (strcmp(argv[argc-1], "/dev") == 0 || !is_dir(argv[argc-1])) {
         fprintf(stderr, "Invalid arguments\n");
         return -1;
     }
@@ -248,9 +248,12 @@ int main(int argc, const char **argv)
         verbose_log("setup: nothing to magic mount\n");
         goto success;
     }
+    if (mount(mnt_name, argv[argc-1], "tmpfs", 0, nullptr))
+	    goto failed;
     verbose_log("setup: mountpoint=[%s]\n", argv[argc-1]);
-    mount(mnt_name, argv[argc-1], "tmpfs", 0, nullptr);
     do_mount();
+
+    // remount to read-only
     mount(nullptr, argv[argc-1], nullptr, MS_REMOUNT | MS_RDONLY | MS_REC, nullptr);
 
     success:

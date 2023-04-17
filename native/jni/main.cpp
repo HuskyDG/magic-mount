@@ -153,7 +153,7 @@ static void collect_mount(const char *src, const char *target)
             verbose_log("record: dest=[%s] marked as trusted opaque\n", target);
             item.back().ignore = true;
         }
-        delete trusted_opaque;
+        delete[] trusted_opaque;
     }
     struct dirent *dp;
     DIR *dirfp = opendir(src);

@@ -23,7 +23,3 @@ if [[ "$build_mode" == "release" ]]; then
 fi
 ndk-build -j4 NDK_DEBUG=$debug_mode
 popd
-
-rm -rf out
-mkdir out
-zip -r9 out/magic-mount-release.zip native/libs

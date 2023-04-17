@@ -31,13 +31,3 @@ jobs:
       with:
         name: magic-mount-release
         path: native/libs
-
-    - uses: marvinpinto/action-automatic-releases@latest
-      if: github.ref == 'refs/heads/main'
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        automatic_release_tag: "latest"
-        prerelease: false
-        title: "${{ env.GITHUB_SHA }}"
-        files: |
-          out/magic-mount-release.zip

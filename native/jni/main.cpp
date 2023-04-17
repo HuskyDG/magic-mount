@@ -132,8 +132,8 @@ static void collect_mount(const char *src, const char *target)
     struct statfs stfs{};
     statfs(src, &stfs);
     if (stfs.f_type == PROC_SUPER_MAGIC) {
-        return; // no magic mount /proc
         verbose_log("record: ignore src=[%s] unsupported fs\n", src);
+        return; // no magic mount /proc
     }
     auto s = find_node_by_dest(target);
     struct item_node m;
@@ -150,7 +150,7 @@ static void collect_mount(const char *src, const char *target)
         char *trusted_opaque = new char[3];
         ssize_t ret = getxattr(src, "trusted.overlay.opaque", trusted_opaque, 3*sizeof(char));
         if (ret == 1 && trusted_opaque[0] == 'y') {
-            verbose_log("record: src=[%s] marked as trusted opaque\n", src);
+            verbose_log("record: dest=[%s] marked as trusted opaque\n", target);
             item.back().ignore = true;
         }
         delete trusted_opaque;

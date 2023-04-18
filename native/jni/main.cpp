@@ -248,6 +248,8 @@ int main(int argc, const char **argv)
         if (!is_supported_fs(argv[i])) {
             goto failed;
          }
+    }
+    for (int i=1; i < argc-1; i++) {
         char workdir[100];
         snprintf(workdir, sizeof(workdir), "%s/%d", tmp.data(), i);
         mkdir(workdir, 0755);

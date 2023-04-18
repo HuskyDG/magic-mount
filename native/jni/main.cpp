@@ -135,10 +135,10 @@ struct item_node
 
 std::vector<item_node> item;
 
-inline struct item_node *find_node_by_dest(const char *dest)
+inline struct item_node *find_node_by_dest(std::string_view dest)
 {
     for (auto it = item.begin(); it != item.end(); it++)
-        if (it->dest == dest)
+        if (std::string_view(it->dest) == dest)
             return (struct item_node *)&(*it);
     return nullptr;
 }

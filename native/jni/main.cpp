@@ -143,31 +143,34 @@ inline struct item_node *find_node_by_dest(std::string_view dest)
     return nullptr;
 }
 
-static void collect_mount(const char *src, const char *target)
+static bool magic_mount(const char *src, const char *target)
 {
     if (!is_supported_fs(src)) {
-        verbose_log("record: ignore src=[%s] unsupported fs\n", src);
-        return; // no magic mount /proc
+        verbose_log("magic_mount: ignore src=[%s] unsupported fs\n", src);
+        return true; // no magic mount /proc
     }
-    auto s = find_node_by_dest(target);
-    struct item_node m;
-    m.src = src;
-    m.dest = target;
-    int mode = m.get_mode();
-    if (s == nullptr) {
-        item.emplace_back(m);
-        verbose_log("record: src=[%s] type=[%s]\n", src, parse_mode(mode).data());
-    }
-    if (!S_ISDIR(m.st.st_mode) || (s && s->ignore))
-        return;
     {
-        char *trusted_opaque = new char[3];
-        ssize_t ret = getxattr(src, "trusted.overlay.opaque", trusted_opaque, 3*sizeof(char));
-        if (ret == 1 && trusted_opaque[0] == 'y') {
-            verbose_log("record: dest=[%s] marked as trusted opaque\n", target);
-            item.back().ignore = true;
+        auto s = find_node_by_dest(target);
+        struct item_node m;
+        m.src = src;
+        m.dest = target;
+        int mode = m.get_mode();
+        if (s == nullptr) {
+            item.emplace_back(m);
+            if (!m.do_mount())
+                return false;
         }
-        delete[] trusted_opaque;
+        if (!S_ISDIR(m.st.st_mode) || (s && s->ignore))
+            return true; // regular file or trusted opaque
+        {
+            char *trusted_opaque = new char[3];
+            ssize_t ret = getxattr(src, "trusted.overlay.opaque", trusted_opaque, 3*sizeof(char));
+            if (ret == 1 && trusted_opaque[0] == 'y') {
+                verbose_log("magic_mount: %s marked as trusted opaque\n", target);
+                item.back().ignore = true;
+            }
+            delete[] trusted_opaque;
+        }
     }
     struct dirent *dp;
     DIR *dirfp = opendir(src);
@@ -181,19 +184,14 @@ static void collect_mount(const char *src, const char *target)
             char b1[PATH_MAX], b2[PATH_MAX];
             snprintf(b1, sizeof(b1), "%s/%s", src, dp->d_name);
             snprintf(b2, sizeof(b2), "%s/%s", target, dp->d_name);
-            collect_mount(b1, b2);
+            if (!magic_mount(b1, b2))
+                return false;
         }
         closedir(dirfp);
+        return true;
     }
+    return false;
 }
-
-static bool do_mount() {
-    for (auto it = item.begin(); it != item.end(); it++)
-        if (!it->do_mount())
-            return false;
-    return true;
-}
-
 int main(int argc, const char **argv)
 {
     const char *mnt_name = "tmpfs";
@@ -249,32 +247,42 @@ int main(int argc, const char **argv)
             goto failed;
          }
     }
-    for (int i=1; i < argc-1; i++) {
-        char workdir[100];
-        snprintf(workdir, sizeof(workdir), "%s/%d", tmp.data(), i);
-        mkdir(workdir, 0755);
-        if (mount(argv[i], workdir, nullptr, MS_BIND | mount_flags, nullptr)) {
-            verbose_log("error: unable to setup layer[%d]=[%s]\n", i, argv[i]);
+    // setup workdir first
+    {
+        std::vector<std::string> workdirs;
+        for (int i=1; i < argc-1; i++) {
+            char workdir[100];
+            snprintf(workdir, sizeof(workdir), "%s/%d", tmp.data(), i);
+            mkdir(workdir, 0755);
+            verbose_log("setup: layer[%d]=[%s]\n", i, argv[i], workdir);
+            if (!mount(argv[i], workdir, nullptr, MS_BIND | mount_flags, nullptr) &&
+                !mount("", workdir, nullptr, MS_PRIVATE | mount_flags, nullptr)) {
+                   workdirs.push_back(workdir);
+                continue;
+            }
+            verbose_log("magic_mount: setup failed\n");
+            reason = std::strerror(errno);
             goto failed;
         }
-        verbose_log("setup: layer[%d]=[%s] workdir=[%s]\n", i, argv[i], workdir);
-        mount("", workdir, nullptr, MS_PRIVATE | mount_flags, nullptr);
-        collect_mount(workdir, argv[argc-1]);
-    }
-    if (item.empty()) {
-        verbose_log("Nothing to magic mount");
-        goto success;
-    }
-    if (mount(mnt_name, argv[argc-1], "tmpfs", 0, nullptr)) {
-        reason = std::strerror(errno);
-        goto failed;
-    }
-    verbose_log("setup: mountpoint=[%s]\n", argv[argc-1]);
-
-    if (!do_mount()) {
-        verbose_log("magic_mount: mount failed\n");
-        umount2(argv[argc-1], MNT_DETACH);
-        goto failed;
+        verbose_log("setup: mountpoint=[%s]\n", argv[argc-1]);
+        if (mount(mnt_name, argv[argc-1], "tmpfs", 0, nullptr)) {
+            reason = std::strerror(errno);
+            goto failed;
+        }
+        struct stat st_mnt{}, st_unmnt{};
+        stat(argv[argc-1], &st_mnt);
+        for (auto &m : workdirs) {
+            if (magic_mount(m.data(), argv[argc-1])) {
+                continue;
+            }
+            verbose_log("magic_mount: mount failed\n");
+            if (stat(argv[argc-1], &st_unmnt) == 0 &&
+                st_mnt.st_dev == st_unmnt.st_dev &&
+                st_mnt.st_ino == st_unmnt.st_ino)
+                // don't unmount if tmpfs is unmounted by another one
+                umount2(argv[argc-1], MNT_DETACH);
+            goto failed;
+        }
     }
 
     // remount to read-only

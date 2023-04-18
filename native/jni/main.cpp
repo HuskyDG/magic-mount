@@ -76,7 +76,7 @@ struct item_node
         return -1;
     }
 
-    void do_mount()
+    bool do_mount()
     {
         int mode = get_mode();
 
@@ -84,46 +84,47 @@ struct item_node
         {
         case 0:
         { // DIRECTORY
-            mkdir(dest.data(), 0);
-            clone_attr(src.data(), dest.data());
             verbose_log("magic_mount: mkdir %s <- %s\n", dest.data(), src.data());
+            mkdir(dest.data(), 0);
+            return clone_attr(src.data(), dest.data()) == 0;
             break;
         }
         case 1:
         case 2:
         { // FILE / FIFO
-            close(open(dest.data(), O_RDWR | O_CREAT, 0755));
-            mount(src.data(), dest.data(), nullptr, MS_BIND | mount_flags, nullptr);
             verbose_log("magic_mount: mnt_bind %s <- %s\n", dest.data(), src.data());
+            return close(open(dest.data(), O_RDWR | O_CREAT, 0755)) == 0 &&
+                mount(src.data(), dest.data(), nullptr, MS_BIND | mount_flags, nullptr) == 0;
             break;
         }
         case 3:
         { // SYMLINK
             char buf[PATH_MAX];
             ssize_t n = readlink(src.data(), buf, sizeof(buf));
+            verbose_log("magic_mount: link %s <- %s\n", dest.data(), buf);
             if (n >= 0) {
                 buf[n] = '\0';
-                symlink(buf, dest.data());
-                verbose_log("magic_mount: link %s <- %s\n", dest.data(), buf);
+                return symlink(buf, dest.data()) == 0;
             }
+            return false;
             break;
         }
         case 4:
         { // BLOCK
-            mknod(dest.data(), S_IFBLK, st.st_rdev);
-            clone_attr(src.data(), dest.data());
             verbose_log("magic_mount: mknod block %s <- %s\n", dest.data(), src.data());
+            return mknod(dest.data(), S_IFBLK, st.st_rdev) == 0 &&
+                clone_attr(src.data(), dest.data()) == 0;
         }
         case 5:
         { // CHAR
-            mknod(dest.data(), S_IFCHR, st.st_rdev);
-            clone_attr(src.data(), dest.data());
             verbose_log("magic_mount: mknod char %s <- %s\n", dest.data(), src.data());
+            return mknod(dest.data(), S_IFCHR, st.st_rdev) == 0 &&
+                clone_attr(src.data(), dest.data()) == 0;
         }
         default:
         { // WHITEOUT
             // do nothing
-            verbose_log("magic_mount: ignore %s <- %s\n", dest.data(), src.data());
+            verbose_log("magic_mount: ignore %s\n", dest.data());
             break;
         }
         }
@@ -184,9 +185,11 @@ static void collect_mount(const char *src, const char *target)
     }
 }
 
-static void do_mount() {
+static bool do_mount() {
     for (auto it = item.begin(); it != item.end(); it++)
-        it->do_mount();
+        if (!it->do_mount())
+            return false;
+    return true;
 }
 
 int main(int argc, const char **argv)
@@ -260,7 +263,12 @@ int main(int argc, const char **argv)
     if (mount(mnt_name, argv[argc-1], "tmpfs", 0, nullptr))
         goto failed;
     verbose_log("setup: mountpoint=[%s]\n", argv[argc-1]);
-    do_mount();
+
+    if (!do_mount()) {
+        verbose_log("magic_mount: mount failed\n");
+        umount2(mnt_name, MNT_DETACH);
+		goto failed;
+    }
 
     // remount to read-only
     mount(nullptr, argv[argc-1], nullptr, MS_REMOUNT | MS_RDONLY | MS_REC, nullptr);

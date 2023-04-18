@@ -1,4 +1,5 @@
 #include <sys/xattr.h>
+#include <errno.h>
 
 #include "base.hpp"
 #include "utils.hpp"
@@ -196,6 +197,7 @@ static bool do_mount() {
 int main(int argc, const char **argv)
 {
     const char *mnt_name = "tmpfs";
+    const char *reason = "Invalid arguments";
 
     first:
     if (argc < 3) {
@@ -207,7 +209,7 @@ int main(int argc, const char **argv)
         return 1;
     }
     if (strcmp(argv[argc-1], "/dev") == 0 || !is_dir(argv[argc-1])) {
-        fprintf(stderr, "Invalid arguments\n");
+        fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, argv[argc-1], reason);
         return -1;
     }
 
@@ -238,12 +240,12 @@ int main(int argc, const char **argv)
     if (mkdir(tmp.data(), 0755) ||
         mount("tmpfs", tmp.data(), "tmpfs", 0, nullptr)) {
         verbose_log("error: unable to setup workdir=[%s]\n", tmp.data());
+        reason = "Unable to create working directory";
         goto failed;
     }
 
     for (int i=1; i < argc-1; i++) {
         if (!is_supported_fs(argv[i])) {
-            fprintf(stderr, "Invalid arguments\n");
             goto failed;
          }
         char workdir[100];
@@ -258,11 +260,13 @@ int main(int argc, const char **argv)
         collect_mount(workdir, argv[argc-1]);
     }
     if (item.empty()) {
-        verbose_log("setup: nothing to magic mount\n");
+        verbose_log("Nothing to magic mount");
         goto success;
     }
-    if (mount(mnt_name, argv[argc-1], "tmpfs", 0, nullptr))
+    if (mount(mnt_name, argv[argc-1], "tmpfs", 0, nullptr)) {
+        reason = std::strerror(errno);
         goto failed;
+    }
     verbose_log("setup: mountpoint=[%s]\n", argv[argc-1]);
 
     if (!do_mount()) {
@@ -280,6 +284,7 @@ int main(int argc, const char **argv)
     return 0;
     
     failed:
+    fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, argv[argc-1], reason);
     umount2(tmp.data(), MNT_DETACH);
     rmdir(tmp.data());
     return 1;

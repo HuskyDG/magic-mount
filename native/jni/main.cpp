@@ -3,11 +3,24 @@
 #include "base.hpp"
 #include "utils.hpp"
 
-
 static int mount_flags = 0;
 static bool verbose_logging = false;
 
 #define verbose_log(...) { if (verbose_logging) fprintf(stderr, __VA_ARGS__); }
+
+static bool is_supported_fs(const char *dir) {
+    struct statfs st;
+    if (statfs(dir, &st) == 0) {
+       switch (st.f_type) {
+           case PROC_SUPER_MAGIC:
+           case SELINUX_MAGIC:
+           case SYSFS_MAGIC:
+               return false;
+       }
+       return true;
+    }
+    return false;
+}
 
 int clone_attr(const char *src, const char *dest) 
 {
@@ -129,9 +142,7 @@ inline struct item_node *find_node_by_dest(const char *dest)
 
 static void collect_mount(const char *src, const char *target)
 {
-    struct statfs stfs{};
-    statfs(src, &stfs);
-    if (stfs.f_type == PROC_SUPER_MAGIC) {
+    if (!is_supported_fs(src)) {
         verbose_log("record: ignore src=[%s] unsupported fs\n", src);
         return; // no magic mount /proc
     }
@@ -227,9 +238,7 @@ int main(int argc, const char **argv)
     }
 
     for (int i=1; i < argc-1; i++) {
-        struct statfs stfs{};
-        statfs(argv[i], &stfs);
-        if (stfs.f_type == PROC_SUPER_MAGIC) {
+        if (!is_supported_fs(argv[i])) {
             fprintf(stderr, "Invalid arguments\n");
             goto failed;
          }
@@ -249,7 +258,7 @@ int main(int argc, const char **argv)
         goto success;
     }
     if (mount(mnt_name, argv[argc-1], "tmpfs", 0, nullptr))
-	    goto failed;
+        goto failed;
     verbose_log("setup: mountpoint=[%s]\n", argv[argc-1]);
     do_mount();
 

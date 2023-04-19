@@ -4,6 +4,8 @@
 
 OverlayFS style based on Magisk's Magic mount logic (basically bind mount) that allows you to combine multiple directories into one similar to overlayfs. Support whiteout and trusted opaque behavior of overlayfs.
 
+In short, this is OverlayFS re-implemented as magic mount logic. However, it doesn't support `upperdir` for writable behavior.
+
 Usage:
 
 ```bash
@@ -11,6 +13,10 @@ Usage:
 ```
 
 ## Whiteout file/folder to mark delete
+
+The whiteout file is character node with 0:0 (major, minor)
+
+> When a whiteout is found in the upper level of a merged directory, any matching name in the lower level is ignored, and the whiteout itself is also hidden.
 
 ```bash
 mkdir -p /data/adb/app
@@ -22,9 +28,13 @@ mknod /data/adb/app/Stk c 0 0
 
 ## Mark as replace
 
+Folder with `trusted.overlay.opaque:y` attribute will be considered as trusted opaque
+
+> Where the upper filesystem contains an opaque directory, any directory in the lower filesystem with the same name is ignored.
+
 ```bash
 mkdir -p /data/adb/app/Stk
-chcon -r u:object_r:system_file:s0 /data/adb/app
+chcon -R u:object_r:system_file:s0 /data/adb/app
 setfattr -n trusted.overlay.opaque -v y /data/adb/app/Stk
 ./magic-mount -r /data/adb/app /system/app /system/app
 

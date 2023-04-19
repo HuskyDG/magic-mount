@@ -1,13 +1,18 @@
 #include <sys/xattr.h>
 #include <errno.h>
 
+#include "logging.hpp"
 #include "base.hpp"
 #include "utils.hpp"
 
+int log_fd = -1;
+bool enable_logging = false;
 static int mount_flags = 0;
 static bool verbose_logging = false;
 
-#define verbose_log(...) { if (verbose_logging) fprintf(stderr, __VA_ARGS__); }
+#define verbose_log(...) { \
+if (verbose_logging) fprintf(stderr, __VA_ARGS__); \
+LOGD(__VA_ARGS__); }
 
 static bool is_supported_fs(const char *dir) {
     struct statfs st;
@@ -34,22 +39,6 @@ int clone_attr(const char *src, const char *dest)
         setfilecon(dest, con));
     freecon(con);
     return (ret)? -1 : 0;
-}
-
-std::string parse_mode(int mode) {
-    if (mode == 0)
-        return "DIRECTORY";
-    if (mode == 1)
-        return "FILE";
-    if (mode == 2)
-        return "FIFO";
-    if (mode == 3)
-        return "SYMLINK";
-    if (mode == 4)
-        return "BLOCK";
-    if (mode == 5)
-        return "CHAR";
-    return "WHITEOUT";
 }
 
 struct item_node
@@ -85,7 +74,7 @@ struct item_node
         {
         case 0:
         { // DIRECTORY
-            verbose_log("magic_mount: mkdir %s <- %s\n", dest.data(), src.data());
+            verbose_log("%-10s: %s <- %s\n", "mkdir", dest.data(), src.data());
             mkdir(dest.data(), 0);
             return clone_attr(src.data(), dest.data()) == 0;
             break;
@@ -93,7 +82,7 @@ struct item_node
         case 1:
         case 2:
         { // FILE / FIFO
-            verbose_log("magic_mount: mnt_bind %s <- %s\n", dest.data(), src.data());
+            verbose_log("%-10s: %s <- %s\n", "bind_mnt", dest.data(), src.data());
             return close(open(dest.data(), O_RDWR | O_CREAT, 0755)) == 0 &&
                 mount(src.data(), dest.data(), nullptr, MS_BIND | mount_flags, nullptr) == 0;
             break;
@@ -102,7 +91,7 @@ struct item_node
         { // SYMLINK
             char buf[PATH_MAX];
             ssize_t n = readlink(src.data(), buf, sizeof(buf));
-            verbose_log("magic_mount: link %s <- %s\n", dest.data(), buf);
+            verbose_log("%-10s: %s <- %s\n", "symlink", dest.data(), src.data());
             if (n >= 0) {
                 buf[n] = '\0';
                 return symlink(buf, dest.data()) == 0;
@@ -112,20 +101,20 @@ struct item_node
         }
         case 4:
         { // BLOCK
-            verbose_log("magic_mount: mknod block %s <- %s\n", dest.data(), src.data());
+            verbose_log("%-10s: %s <- %s\n", "mknod_chr", dest.data(), src.data());
             return mknod(dest.data(), S_IFBLK, st.st_rdev) == 0 &&
                 clone_attr(src.data(), dest.data()) == 0;
         }
         case 5:
         { // CHAR
-            verbose_log("magic_mount: mknod char %s <- %s\n", dest.data(), src.data());
+            verbose_log("%-10s: %s <- %s\n", "mknod_blk", dest.data(), src.data());
             return mknod(dest.data(), S_IFCHR, st.st_rdev) == 0 &&
                 clone_attr(src.data(), dest.data()) == 0;
         }
         default:
         { // WHITEOUT
             // do nothing
-            verbose_log("magic_mount: ignore %s\n", dest.data());
+            verbose_log("%-10s: %s <- %s\n", "ignore", dest.data(), src.data());
             return true;
             break;
         }
@@ -192,7 +181,7 @@ static bool magic_mount(const char *src, const char *target)
     }
     return false;
 }
-int main(int argc, const char **argv)
+int main(int argc, char **argv)
 {
     const char *mnt_name = "tmpfs";
     const char *reason = "Invalid arguments";
@@ -203,7 +192,10 @@ int main(int argc, const char **argv)
                         "Use magic mount to combine DIR1, DIR2... and mount into DIR\n\n"
                         "-r            Merge content of mounts under DIR1, DIR2... also\n"
                         "-n NAME       Give magic mount a nice name\n"
-                        "-v            Verbose magic mount\n\n", basename(argv[0]));
+                        "-v            Verbose magic mount to stderr\n"
+                        "-l            Verbose magic mount to logd\n"
+                        "-f FILE       Verbose magic mount to file\n"
+                        "\n", basename(argv[0]));
         return 1;
     }
     if (strcmp(argv[argc-1], "/dev") == 0 || !is_dir(argv[argc-1])) {
@@ -212,18 +204,31 @@ int main(int argc, const char **argv)
     }
 
     if (argv[1][0] == '-') {
-        if (strcmp(argv[1], "-r") == 0) {
-            verbose_log("option: recursive\n");
-            mount_flags |= MS_REC;
-        } else if (strcmp(argv[1], "-n") == 0) {
-            verbose_log("option: name=[%s]\n", argv[2]);
-            mnt_name = argv[2];
-            argc--; argv++;
-        } else if (strcmp(argv[1], "-v") == 0) {
-            verbose_logging = true;
-        } else {
-            fprintf(stderr, "Invalid options: [%s]\n", argv[1]);
-            return 1;
+        char *argv_option = argv[1];
+        for (int i = 1; argv_option[i] != '\0'; ++i) {
+            if (argv_option[i] == 'r') {
+                verbose_log("option: recursive\n");
+                mount_flags |= MS_REC;
+            } else if (argv_option[i] == 'n' && argv_option[i+1] == '\0') {
+                verbose_log("option: name=[%s]\n", argv[2]);
+                mnt_name = argv[2];
+                argc--; argv++;
+                break;
+            } else if (argv_option[i] == 'l') {
+                enable_logging = true;
+            } else if (argv_option[i] == 'f' && argv_option[i+1] == '\0') {
+                if (log_fd >= 0)
+                    break; 
+                verbose_log("option: log to file=[%s]\n", argv[2]);
+                log_fd = open(argv[2], O_RDWR | O_CREAT | O_APPEND, 0666);
+                argc--; argv++;
+                break;
+            } else if (argv_option[i] == 'v') {
+                verbose_logging = true;
+            } else {
+                fprintf(stderr, "Invalid options: [%s]\n", argv[1]);
+                return 1;
+            }
         }
         argc--; argv++;
         goto first;
@@ -255,7 +260,7 @@ int main(int argc, const char **argv)
             char workdir[12];
             snprintf(workdir, sizeof(workdir), "%d", i);
             mkdir(workdir, 0755);
-            verbose_log("setup: layer[%d]=[%s]\n", i, argv[i], workdir);
+            verbose_log("setup: layerdir[%d]=[%s]\n", i, argv[i]);
             if (!mount(argv[i], workdir, nullptr, MS_BIND | mount_flags, nullptr) &&
                 !mount("", workdir, nullptr, MS_PRIVATE | mount_flags, nullptr)) {
                    workdirs.push_back(workdir);

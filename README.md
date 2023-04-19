@@ -4,7 +4,7 @@
 
 OverlayFS style based on Magisk's Magic mount logic (basically bind mount) that allows you to combine multiple directories into one similar to overlayfs. Support whiteout and trusted opaque behavior of overlayfs.
 
-In short, this is OverlayFS re-implemented as magic mount logic. However, it doesn't support `upperdir` for writable behavior.
+In short, this is OverlayFS re-implemented as magic mount logic. However, it doesn't support `upperdir` behavior found on OverlayFS for writable.
 
 Usage:
 

@@ -236,7 +236,8 @@ int main(int argc, const char **argv)
     } while (access(tmp.data(), F_OK) == 0);
     verbose_log("setup: workdir=[%s]\n", tmp.data());
     if (mkdir(tmp.data(), 0755) ||
-        mount("tmpfs", tmp.data(), "tmpfs", 0, nullptr)) {
+        mount("tmpfs", tmp.data(), "tmpfs", 0, nullptr) ||
+        chdir(tmp.data())) {
         verbose_log("error: unable to setup workdir=[%s]\n", tmp.data());
         reason = "Unable to create working directory";
         goto failed;
@@ -251,8 +252,8 @@ int main(int argc, const char **argv)
     {
         std::vector<std::string> workdirs;
         for (int i=1; i < argc-1; i++) {
-            char workdir[100];
-            snprintf(workdir, sizeof(workdir), "%s/%d", tmp.data(), i);
+            char workdir[12];
+            snprintf(workdir, sizeof(workdir), "%d", i);
             mkdir(workdir, 0755);
             verbose_log("setup: layer[%d]=[%s]\n", i, argv[i], workdir);
             if (!mount(argv[i], workdir, nullptr, MS_BIND | mount_flags, nullptr) &&

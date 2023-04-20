@@ -4,7 +4,7 @@
 
 OverlayFS style based on Magisk's Magic mount logic (basically bind mount) that allows you to combine multiple directories into one similar to overlayfs. Support whiteout and trusted opaque behavior of overlayfs.
 
-In short, this is OverlayFS re-implemented as magic mount logic. However, it doesn't support `upperdir` behavior found on OverlayFS for writable.
+In short, this is OverlayFS re-implemented as magic mount logic. However, it doesn't support `upperdir` behavior found on OverlayFS for writable because it is actually just tmpfs + bind mounts.
 
 Usage:
 
@@ -42,4 +42,4 @@ setfattr -n trusted.overlay.opaque -v y /data/adb/app/Stk
 
 ## Important
 
-Note: Magic-mount is read-only. Extremly ineffective than overlayfs, don't use magic-mount with directory that includes large numbers of file/directory. It is recommended to use magic mount on folder that you actually need.
+Note: Magic-mount is read-only. Extremely ineffective than overlayfs, don't use magic-mount with directory that includes large numbers of file/directory. It is recommended to use magic mount on folder that you actually need.

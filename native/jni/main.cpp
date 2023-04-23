@@ -148,6 +148,7 @@ static bool magic_mount(const char *src, const char *target)
             item.emplace_back(m);
             if (!m.do_mount())
                 return false;
+            s = &(item.back());
         }
         if (!S_ISDIR(m.st.st_mode) || // regular file
             (s && (s->ignore || // trusted opaque
@@ -158,7 +159,7 @@ static bool magic_mount(const char *src, const char *target)
             ssize_t ret = getxattr(src, "trusted.overlay.opaque", trusted_opaque, 3*sizeof(char));
             if (ret == 1 && trusted_opaque[0] == 'y') {
                 verbose_log("magic_mount: %s marked as trusted opaque\n", target);
-                item.back().ignore = true;
+                s->ignore = true;
             }
             delete[] trusted_opaque;
         }

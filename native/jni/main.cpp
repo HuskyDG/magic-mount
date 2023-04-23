@@ -149,8 +149,10 @@ static bool magic_mount(const char *src, const char *target)
             if (!m.do_mount())
                 return false;
         }
-        if (!S_ISDIR(m.st.st_mode) || (s && s->ignore))
-            return true; // regular file or trusted opaque
+        if (!S_ISDIR(m.st.st_mode) || // regular file
+            (s && (s->ignore || // trusted opaque
+                   s->get_mode() != 0 /* mounted (upper) node is regular file */)))
+            return true;
         {
             char *trusted_opaque = new char[3];
             ssize_t ret = getxattr(src, "trusted.overlay.opaque", trusted_opaque, 3*sizeof(char));

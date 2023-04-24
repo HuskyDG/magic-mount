@@ -10,9 +10,9 @@ bool enable_logging = false;
 static int mount_flags = 0;
 static bool verbose_logging = false;
 
-#define verbose_log(...) { \
-if (verbose_logging) fprintf(stderr, __VA_ARGS__); \
-LOGD(__VA_ARGS__); }
+#define verbose_log(s, ...) { \
+if (verbose_logging) fprintf(stderr, "%-12s: " s, __VA_ARGS__); \
+LOGD("%-12s: " s, __VA_ARGS__); }
 
 static bool is_supported_fs(const char *dir) {
     struct statfs st;
@@ -74,7 +74,7 @@ struct item_node
         {
         case 0:
         { // DIRECTORY
-            verbose_log("%-10s: %s <- %s\n", "mkdir", dest.data(), src.data());
+            verbose_log("%s <- %s\n", "mkdir", dest.data(), src.data());
             mkdir(dest.data(), 0);
             return clone_attr(src.data(), dest.data()) == 0;
             break;
@@ -82,7 +82,7 @@ struct item_node
         case 1:
         case 2:
         { // FILE / FIFO
-            verbose_log("%-10s: %s <- %s\n", "bind_mnt", dest.data(), src.data());
+            verbose_log("%s <- %s\n", "bind_mnt", dest.data(), src.data());
             return close(open(dest.data(), O_RDWR | O_CREAT, 0755)) == 0 &&
                 mount(src.data(), dest.data(), nullptr, MS_BIND | mount_flags, nullptr) == 0;
             break;
@@ -91,7 +91,7 @@ struct item_node
         { // SYMLINK
             char buf[PATH_MAX];
             ssize_t n = readlink(src.data(), buf, sizeof(buf));
-            verbose_log("%-10s: %s <- %s\n", "symlink", dest.data(), src.data());
+            verbose_log("%s <- %s\n", "symlink", dest.data(), src.data());
             if (n >= 0) {
                 buf[n] = '\0';
                 return symlink(buf, dest.data()) == 0;
@@ -101,20 +101,20 @@ struct item_node
         }
         case 4:
         { // BLOCK
-            verbose_log("%-10s: %s <- %s\n", "mknod_chr", dest.data(), src.data());
+            verbose_log("%s <- %s\n", "mknod_chr", dest.data(), src.data());
             return mknod(dest.data(), S_IFBLK, st.st_rdev) == 0 &&
                 clone_attr(src.data(), dest.data()) == 0;
         }
         case 5:
         { // CHAR
-            verbose_log("%-10s: %s <- %s\n", "mknod_blk", dest.data(), src.data());
+            verbose_log("%s <- %s\n", "mknod_blk", dest.data(), src.data());
             return mknod(dest.data(), S_IFCHR, st.st_rdev) == 0 &&
                 clone_attr(src.data(), dest.data()) == 0;
         }
         default:
         { // WHITEOUT
             // do nothing
-            verbose_log("%-10s: %s <- %s\n", "ignore", dest.data(), src.data());
+            verbose_log("%s <- %s\n", "ignore", dest.data(), src.data());
             return true;
             break;
         }
@@ -135,7 +135,7 @@ inline struct item_node *find_node_by_dest(std::string_view dest)
 static bool magic_mount(const char *src, const char *target)
 {
     if (!is_supported_fs(src)) {
-        verbose_log("magic_mount: ignore src=[%s] unsupported fs\n", src);
+        verbose_log("ignore src=[%s] unsupported fs\n", "magic_mount", src);
         return true; // no magic mount /proc
     }
     {
@@ -158,7 +158,7 @@ static bool magic_mount(const char *src, const char *target)
             char *trusted_opaque = new char[3];
             ssize_t ret = getxattr(src, "trusted.overlay.opaque", trusted_opaque, 3*sizeof(char));
             if (ret == 1 && trusted_opaque[0] == 'y') {
-                verbose_log("magic_mount: %s marked as trusted opaque\n", target);
+                verbose_log("%s marked as trusted opaque\n", "magic_mount", target);
                 s->ignore = true;
             }
             delete[] trusted_opaque;
@@ -207,10 +207,10 @@ int main(int argc, char **argv)
         char *argv_option = argv[1];
         for (int i = 1; argv_option[i] != '\0'; ++i) {
             if (argv_option[i] == 'r') {
-                verbose_log("option: recursive\n");
+                verbose_log("recursive\n", "option");
                 mount_flags |= MS_REC;
             } else if (argv_option[i] == 'n' && argv_option[i+1] == '\0') {
-                verbose_log("option: name=[%s]\n", argv[2]);
+                verbose_log("name=[%s]\n", "option", argv[2]);
                 mnt_name = argv[2];
                 argc--; argv++;
                 break;
@@ -219,7 +219,7 @@ int main(int argc, char **argv)
             } else if (argv_option[i] == 'f' && argv_option[i+1] == '\0') {
                 if (log_fd >= 0)
                     break; 
-                verbose_log("option: log to file=[%s]\n", argv[2]);
+                verbose_log("log to file=[%s]\n", "option", argv[2]);
                 log_fd = open(argv[2], O_RDWR | O_CREAT | O_APPEND, 0666);
                 argc--; argv++;
                 break;
@@ -244,11 +244,11 @@ int main(int argc, char **argv)
         tmp = "/dev/.workdir_";
         tmp += random_strc(20);
     } while (access(tmp.data(), F_OK) == 0);
-    verbose_log("setup: workdir=[%s]\n", tmp.data());
+    verbose_log("workdir=[%s]\n", "setup", tmp.data());
     if (mkdir(tmp.data(), 0755) ||
         mount("tmpfs", tmp.data(), "tmpfs", 0, nullptr) ||
         chdir(tmp.data())) {
-        verbose_log("error: unable to setup workdir=[%s]\n", tmp.data());
+        verbose_log("unable to setup workdir=[%s]\n", "error", tmp.data());
         reason = "Unable to create working directory";
         goto failed;
     }
@@ -266,17 +266,17 @@ int main(int argc, char **argv)
             char workdir[12];
             snprintf(workdir, sizeof(workdir), "%d", i);
             mkdir(workdir, 0755);
-            verbose_log("setup: layerdir[%d]=[%s]\n", i, argv[i]);
+            verbose_log("layerdir[%d]=[%s]\n", "setup", i, argv[i]);
             if (!mount(argv[i], workdir, nullptr, MS_BIND | mount_flags, nullptr) &&
                 !mount("", workdir, nullptr, MS_PRIVATE | mount_flags, nullptr)) {
                    workdirs.push_back(workdir);
                 continue;
             }
-            verbose_log("magic_mount: setup failed\n");
+            verbose_log("setup failed\n", "magic_mount");
             reason = std::strerror(errno);
             goto failed;
         }
-        verbose_log("setup: magic mount layerdir[0]=[%s]\n", real_dir);
+        verbose_log("magic mount layerdir[0]=[%s]\n", "setup", real_dir);
         if (mount(mnt_name, "0", "tmpfs", 0, nullptr)) {
             reason = std::strerror(errno);
             goto failed;
@@ -285,7 +285,7 @@ int main(int argc, char **argv)
             if (magic_mount(m.data(), "0")) {
                 continue;
             }
-            verbose_log("magic_mount: mount failed\n");
+            verbose_log("mount failed\n", "magic_mount");
             goto failed;
         }
     }
@@ -298,7 +298,7 @@ int main(int argc, char **argv)
         reason = std::strerror(errno);
         goto failed;
     }
-    verbose_log("setup: moved mounts to %s\n", real_dir);
+    verbose_log("moved mounts to %s\n", "magic_mount", real_dir);
 
     success:
     umount2(tmp.data(), MNT_DETACH);

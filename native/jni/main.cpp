@@ -188,6 +188,7 @@ int main(int argc, char **argv)
 {
     const char *mnt_name = "tmpfs";
     const char *reason = "Invalid arguments";
+    const char *real_dir = nullptr;
 
     first:
     if (argc < 3) {
@@ -200,10 +201,6 @@ int main(int argc, char **argv)
                         "-f FILE       Verbose magic mount to file\n"
                         "\n", basename(argv[0]));
         return 1;
-    }
-    if (strcmp(argv[argc-1], "/dev") == 0 || !is_dir(argv[argc-1])) {
-        fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, argv[argc-1], reason);
-        return -1;
     }
 
     if (argv[1][0] == '-') {
@@ -237,6 +234,11 @@ int main(int argc, char **argv)
         goto first;
     }
 
+    if (strcmp(argv[argc-1], "/dev") == 0 || !is_dir(argv[argc-1]) || (real_dir = realpath(argv[argc-1], nullptr)) == nullptr) {
+        fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, argv[argc-1], reason);
+        return -1;
+    }
+
     std::string tmp;
     do {
         tmp = "/dev/.workdir_";
@@ -259,6 +261,7 @@ int main(int argc, char **argv)
     // setup workdir first
     {
         std::vector<std::string> workdirs;
+        mkdir("0", 0755);
         for (int i=1; i < argc-1; i++) {
             char workdir[12];
             snprintf(workdir, sizeof(workdir), "%d", i);
@@ -273,29 +276,29 @@ int main(int argc, char **argv)
             reason = std::strerror(errno);
             goto failed;
         }
-        verbose_log("setup: mountpoint=[%s]\n", argv[argc-1]);
-        if (mount(mnt_name, argv[argc-1], "tmpfs", 0, nullptr)) {
+        verbose_log("setup: magic mount layerdir[0]=[%s]\n", real_dir);
+        if (mount(mnt_name, "0", "tmpfs", 0, nullptr)) {
             reason = std::strerror(errno);
             goto failed;
         }
-        struct stat st_mnt{}, st_unmnt{};
-        stat(argv[argc-1], &st_mnt);
         for (auto &m : workdirs) {
-            if (magic_mount(m.data(), argv[argc-1])) {
+            if (magic_mount(m.data(), "0")) {
                 continue;
             }
             verbose_log("magic_mount: mount failed\n");
-            if (stat(argv[argc-1], &st_unmnt) == 0 &&
-                st_mnt.st_dev == st_unmnt.st_dev &&
-                st_mnt.st_ino == st_unmnt.st_ino)
-                // don't unmount if tmpfs is unmounted by another one
-                umount2(argv[argc-1], MNT_DETACH);
             goto failed;
         }
     }
 
     // remount to read-only
-    mount(nullptr, argv[argc-1], nullptr, MS_REMOUNT | MS_RDONLY | MS_REC, nullptr);
+    mount(nullptr, "0", nullptr, MS_REMOUNT | MS_RDONLY | MS_REC, nullptr);
+    // make mount as private so we can move mounts
+    mount(nullptr, "0", nullptr, MS_PRIVATE | MS_REC, nullptr);
+    if (mount("0", real_dir, nullptr, MS_MOVE, nullptr)) {
+        reason = std::strerror(errno);
+        goto failed;
+    }
+    verbose_log("setup: moved mounts to %s\n", real_dir);
 
     success:
     umount2(tmp.data(), MNT_DETACH);
@@ -303,7 +306,7 @@ int main(int argc, char **argv)
     return 0;
     
     failed:
-    fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, argv[argc-1], reason);
+    fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, real_dir, reason);
     umount2(tmp.data(), MNT_DETACH);
     rmdir(tmp.data());
     return 1;

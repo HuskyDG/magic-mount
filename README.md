@@ -20,7 +20,22 @@ Use magic mount to combine DIR1, DIR2... and mount into DIR
 -f FILE       Verbose magic mount to file
 ```
 
-## Whiteout file/folder to mark delete
+## Modifying system partition with magic-mount
+
+### Merge contents
+
+Example: `/data/adb/app` has `App_1`, `App_2` and `/system/app` has `App_3`
+
+```
+# Ensure /data/adb/app context is u:object_r:system_file:s0
+# as mounting with /data/app/app has higher level than /system/app
+chcon -R u:object_r:system_file:s0 /data/adb/app
+./magic-mount -r /data/adb/app /system/app /system/app
+```
+
+After that, `/system/app` will have `App_1`, `App_2`, `App_3`
+
+### Delete folder systemlessly
 
 The whiteout file is character node with 0:0 (major, minor)
 
@@ -34,7 +49,7 @@ mknod /data/adb/app/Stk c 0 0
 
 ```
 
-## Mark as replace
+### Replace folder
 
 Folder with `trusted.overlay.opaque:y` attribute will be considered as trusted opaque
 

@@ -8,8 +8,16 @@ In short, this is OverlayFS re-implemented as magic mount logic. However, it doe
 
 Usage:
 
-```bash
-./magic-mount [-v] [-r] [-n NAME] /mnt/dir1 /mnt/dir2 /mnt/dir3 /mnt/merged
+```
+usage: magic-mount [OPTION] DIR1 DIR2... DIR
+
+Use magic mount to combine DIR1, DIR2... and mount into DIR
+
+-r            Merge content of mounts under DIR1, DIR2... also
+-n NAME       Give magic mount a nice name
+-v            Verbose magic mount to stderr
+-l            Verbose magic mount to logd
+-f FILE       Verbose magic mount to file
 ```
 
 ## Whiteout file/folder to mark delete

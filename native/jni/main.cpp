@@ -294,11 +294,13 @@ int main(int argc, char **argv)
     mount(nullptr, "0", nullptr, MS_REMOUNT | MS_RDONLY | MS_REC, nullptr);
     // make mount as private so we can move mounts
     mount(nullptr, "0", nullptr, MS_PRIVATE | MS_REC, nullptr);
-    if (mount("0", real_dir, nullptr, MS_MOVE, nullptr)) {
+    if (mount("0", real_dir, nullptr, MS_MOVE, nullptr) == -1 &&
+        // recursive bind mount if moving mount does not work
+        mount("0", real_dir, nullptr, MS_BIND | MS_REC, nullptr) == -1) {
         reason = std::strerror(errno);
         goto failed;
     }
-    verbose_log("moved mounts to %s\n", "magic_mount", real_dir);
+    verbose_log("mounted to %s\n", "magic_mount", real_dir);
 
     success:
     umount2(tmp.data(), MNT_DETACH);

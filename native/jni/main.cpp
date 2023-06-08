@@ -141,6 +141,7 @@ static bool magic_mount(const char *src, const char *target, int layer_number)
         return true; // no magic mount /proc
     }
     {
+        struct stat st;
         auto s = find_node_by_dest(target);
         struct item_node m;
         m.src = src;
@@ -154,10 +155,14 @@ static bool magic_mount(const char *src, const char *target, int layer_number)
             s = &(item.back());
             first = true;
         }
-        if (!S_ISDIR(m.st.st_mode) || // regular file
-            (s && (s->ignore || // trusted opaque
-                   s->get_mode() != 0 /* mounted (upper) node is regular file */)))
+        if (s && (s->ignore || // trusted opaque
+                   s->get_mode() != 0 /* mounted (upper) node is regular file */))
             return true;
+        if (!S_ISDIR(m.st.st_mode) || // regular file
+            (lstat(src, &st) == 0 && !S_ISDIR(st.st_mode))) {
+            s->ignore = true;
+            return true;
+        }
         {
             char *trusted_opaque = new char[3];
             ssize_t ret = getxattr(src, "trusted.overlay.opaque", trusted_opaque, 3*sizeof(char));
@@ -173,7 +178,6 @@ static bool magic_mount(const char *src, const char *target, int layer_number)
             const char *_root = strstr(src, "/");
             if (_root == nullptr) _root = "";
             bool last = true;
-            struct stat st;
             for (int i = layer_number + 1; i < _argc -1; i++) {
                 std::string layerdir = std::to_string(i) + _root;
                 if (lstat(layerdir.data(), &st) == 0 && S_ISDIR(st.st_mode)) {

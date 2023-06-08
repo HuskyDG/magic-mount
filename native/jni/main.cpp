@@ -9,6 +9,8 @@ int log_fd = -1;
 bool enable_logging = false;
 static int mount_flags = 0;
 static bool verbose_logging = false;
+char **_argv;
+int _argc;
 
 #define verbose_log(s, ...) { \
 if (verbose_logging) fprintf(stderr, "%-12s: " s, __VA_ARGS__); \
@@ -132,7 +134,7 @@ inline struct item_node *find_node_by_dest(std::string_view dest)
     return nullptr;
 }
 
-static bool magic_mount(const char *src, const char *target)
+static bool magic_mount(const char *src, const char *target, int layer_number)
 {
     if (!is_supported_fs(src)) {
         verbose_log("ignore src=[%s] unsupported fs\n", "magic_mount", src);
@@ -144,11 +146,13 @@ static bool magic_mount(const char *src, const char *target)
         m.src = src;
         m.dest = target;
         int mode = m.get_mode();
+        bool first = false;
         if (s == nullptr) {
             item.emplace_back(m);
             if (!m.do_mount())
                 return false;
             s = &(item.back());
+            first = true;
         }
         if (!S_ISDIR(m.st.st_mode) || // regular file
             (s && (s->ignore || // trusted opaque
@@ -160,8 +164,30 @@ static bool magic_mount(const char *src, const char *target)
             if (ret == 1 && trusted_opaque[0] == 'y') {
                 verbose_log("%s marked as trusted opaque\n", "magic_mount", target);
                 s->ignore = true;
+                if (first) return mount(src, target, nullptr, MS_BIND | mount_flags, nullptr) == 0;
             }
             delete[] trusted_opaque;
+        }
+        if (first) {
+        // test if this position does not exist in lower layer
+            const char *_root = strstr(src, "/");
+            if (_root == nullptr) _root = "";
+            bool last = true;
+            struct stat st;
+            for (int i = layer_number + 1; i < _argc -1; i++) {
+                std::string layerdir = std::to_string(i) + _root;
+                if (lstat(layerdir.data(), &st) == 0 && S_ISDIR(st.st_mode)) {
+                    // there is folder in lower layer...
+                    last = false;
+                    break;
+                }
+            }
+            if (last) {
+                // marked as unmerged folder to reduce wasting magic mount
+                verbose_log("%s marked as unmerged folder\n", "magic_mount", target);
+                s->ignore = true;
+                return mount(src, target, nullptr, MS_BIND | mount_flags, nullptr) == 0;
+            }
         }
     }
     struct dirent *dp;
@@ -176,7 +202,7 @@ static bool magic_mount(const char *src, const char *target)
             char b1[PATH_MAX], b2[PATH_MAX];
             snprintf(b1, sizeof(b1), "%s/%s", src, dp->d_name);
             snprintf(b2, sizeof(b2), "%s/%s", target, dp->d_name);
-            if (!magic_mount(b1, b2))
+            if (!magic_mount(b1, b2, layer_number))
                 return false;
         }
         closedir(dirfp);
@@ -259,8 +285,9 @@ int main(int argc, char **argv)
          }
     }
     // setup workdir first
+    _argv = argv;
+    _argc = argc;
     {
-        std::vector<std::string> workdirs;
         mkdir("0", 0755);
         for (int i=1; i < argc-1; i++) {
             char workdir[12];
@@ -269,7 +296,6 @@ int main(int argc, char **argv)
             verbose_log("layerdir[%d]=[%s]\n", "setup", i, argv[i]);
             if (!mount(argv[i], workdir, nullptr, MS_BIND | mount_flags, nullptr) &&
                 !mount("", workdir, nullptr, MS_PRIVATE | mount_flags, nullptr)) {
-                   workdirs.push_back(workdir);
                 continue;
             }
             verbose_log("setup failed\n", "magic_mount");
@@ -281,8 +307,8 @@ int main(int argc, char **argv)
             reason = std::strerror(errno);
             goto failed;
         }
-        for (auto &m : workdirs) {
-            if (magic_mount(m.data(), "0")) {
+        for (int i=1; i < argc-1; i++) {
+            if (magic_mount(std::to_string(i).data(), "0", i)) {
                 continue;
             }
             verbose_log("mount failed\n", "magic_mount");

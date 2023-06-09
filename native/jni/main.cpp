@@ -11,6 +11,7 @@ static int mount_flags = 0;
 static bool verbose_logging = false;
 char **_argv;
 int _argc;
+bool full_magic_mount = false;
 
 #define verbose_log(s, ...) { \
 if (verbose_logging) fprintf(stderr, "%-12s: " s, __VA_ARGS__); \
@@ -153,7 +154,7 @@ static bool magic_mount(const char *src, const char *target, int layer_number)
             if (!m.do_mount())
                 return false;
             s = &(item.back());
-            first = true;
+            first = true && !full_magic_mount;
         }
         if (s && (s->ignore || // trusted opaque
                    s->get_mode() != 0 /* mounted (upper) node is regular file */))
@@ -224,11 +225,12 @@ int main(int argc, char **argv)
     if (argc < 3) {
         fprintf(stderr, "usage: %s [OPTION] DIR1 DIR2... DIR\n\n"
                         "Use magic mount to combine DIR1, DIR2... and mount into DIR\n\n"
-                        "-r            Merge content of mounts under DIR1, DIR2... also\n"
+                        "-r            Recursive magic mount mountpoint under DIR1, DIR2... also\n"
                         "-n NAME       Give magic mount a nice name\n"
                         "-v            Verbose magic mount to stderr\n"
-                        "-l            Verbose magic mount to logd\n"
-                        "-f FILE       Verbose magic mount to file\n"
+                        "-l [-/FILE]   Verbose magic mount to logd [-] or file\n"
+                        "-a            Always use magic mount for any case\n"
+                        "-o [MNTFLAGS] Mount flags\n"
                         "\n", basename(argv[0]));
         return 1;
     }
@@ -244,17 +246,57 @@ int main(int argc, char **argv)
                 mnt_name = argv[2];
                 argc--; argv++;
                 break;
-            } else if (argv_option[i] == 'l') {
-                enable_logging = true;
-            } else if (argv_option[i] == 'f' && argv_option[i+1] == '\0') {
-                if (log_fd >= 0)
-                    break; 
-                verbose_log("log to file=[%s]\n", "option", argv[2]);
-                log_fd = open(argv[2], O_RDWR | O_CREAT | O_APPEND, 0666);
+            } else if (argv_option[i] == 'l' && argv_option[i+1] == '\0') {
+                if (strcmp(argv[2], "-") == 0) {
+                    enable_logging = true;
+                } else {
+                    if (log_fd >= 0)
+                        break;
+                    verbose_log("log to file=[%s]\n", "option", argv[2]);
+                    log_fd = open(argv[2], O_RDWR | O_CREAT | O_APPEND, 0666);
+                }
+                argc--; argv++;
+                break;
+            } else if (argv_option[i] == 'o' && argv_option[i+1] == '\0') {
+                std::string mnt_opts = argv[2];
+                auto opts = split_ro(mnt_opts, ',');
+                for (auto &s : opts) {
+                        if (s == "nosuid") {
+                            mount_flags |= MS_NOSUID;
+                        } else if (s == "lazytime") {
+                            mount_flags |= MS_LAZYTIME;
+                        } else if (s == "nodev") {
+                            mount_flags |= MS_NODEV;
+                        } else if (s == "noexec") {
+                            mount_flags |= MS_NOEXEC;
+                        } else if (s == "sync") {
+                            mount_flags |= MS_SYNCHRONOUS;
+                        } else if (s == "dirsync") {
+                            mount_flags |= MS_DIRSYNC;
+                        } else if (s == "noatime") {
+                            mount_flags |= MS_NOATIME;
+                        } else if (s == "nodiratime") {
+                            mount_flags |= MS_NODIRATIME;
+                        } else if (s == "relatime") {
+                            mount_flags |= MS_RELATIME;
+                        } else if (s == "strictatime") {
+                            mount_flags |= MS_STRICTATIME;
+                        } else if (s == "lazytime") {
+                            mount_flags |= MS_LAZYTIME;
+                        } else if (s == "nosymfollow") {
+                            mount_flags |= MS_NOSYMFOLLOW;
+                        } else if (s == "mand") {
+                            mount_flags |= MS_MANDLOCK;
+                        } else if (s == "silent") {
+                            mount_flags |= MS_SILENT;
+                        }
+                }
                 argc--; argv++;
                 break;
             } else if (argv_option[i] == 'v') {
                 verbose_logging = true;
+            } else if (argv_option[i] == 'a') {
+                full_magic_mount = true;
             } else {
                 fprintf(stderr, "Invalid options: [%s]\n", argv[1]);
                 return 1;
@@ -321,7 +363,7 @@ int main(int argc, char **argv)
     }
 
     // remount to read-only
-    mount(nullptr, "0", nullptr, MS_REMOUNT | MS_RDONLY | MS_REC, nullptr);
+    mount(nullptr, "0", nullptr, MS_REMOUNT | MS_RDONLY | MS_REC | mount_flags, nullptr);
     // make mount as private so we can move mounts
     mount(nullptr, "0", nullptr, MS_PRIVATE | MS_REC, nullptr);
     if (mount("0", real_dir, nullptr, MS_MOVE, nullptr) == -1 &&

@@ -147,3 +147,24 @@ const char *xgetenv(const char *name) {
     return val;
 }
 
+std::vector<std::string> split_ro(const std::string& str, const char delimiter) {
+    std::vector<std::string> result;
+    std::string current = "";
+
+    for (size_t i = 0; i < str.size(); ++i) {
+        if (str[i] == delimiter) {
+            if (!current.empty()) {
+                result.push_back(current);
+                current.clear();
+            }
+        } else {
+            current += str[i];
+        }
+    }
+
+    if (!current.empty()) {
+        result.push_back(current);
+    }
+
+    return result;
+}

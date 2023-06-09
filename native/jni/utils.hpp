@@ -16,4 +16,5 @@ int verbose_mount(const char *a, const char *b, const char *c, int d, const char
 int verbose_umount(const char *a, int b);
 const char *xgetenv(const char *name);
 bool str_empty(const char *str);
+std::vector<std::string> split_ro(const std::string& str, const char delimiter);
 

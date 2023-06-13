@@ -25,8 +25,13 @@ jobs:
       run: |
         chmod 777 ./build.sh
         ./build.sh
-    - name: Upload release
+    - name: Upload static binaries
       uses: actions/upload-artifact@v3
       with:
-        name: magic-mount-release
-        path: native/libs
+        name: magic-mount-static
+        path: native/libs/static
+    - name: Upload dynamic binaries
+      uses: actions/upload-artifact@v3
+      with:
+        name: magic-mount-dynamic
+        path: native/libs/dynamic

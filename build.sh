@@ -22,12 +22,35 @@ EOF
     ARCH="$(echo $line | awk '{ print $1 }')"
     CXX="$(echo $line | awk '{ print $2 }')"
     if [ ! -z "$ARCH" ]; then
-        mkdir "native/libs/${ARCH}"
+        mkdir -p "native/libs/static/${ARCH}"
         ${CXX} \
     native/jni/main.cpp \
     native/jni/logging.cpp native/jni/utils.cpp \
     -static \
     -std=c++17 \
-    -o "native/libs/${ARCH}/magic-mount"
+    -o "native/libs/static/${ARCH}/magic-mount"
     fi
 done
+
+
+( cat << EOF
+arm64-v8a aarch64-linux-android31-clang++
+armeabi-v7a armv7a-linux-androideabi31-clang++
+x86 i686-linux-android31-clang++
+x86_64 x86_64-linux-android31-clang++
+EOF
+) | while read line; do
+    ARCH="$(echo $line | awk '{ print $1 }')"
+    CXX="$(echo $line | awk '{ print $2 }')"
+    if [ ! -z "$ARCH" ]; then
+        mkdir -p "native/libs/dynamic/${ARCH}"
+        ${CXX} \
+    native/jni/main.cpp \
+    native/jni/logging.cpp native/jni/utils.cpp \
+    -stdlib=libc++ \
+    -lc++abi \
+    -std=c++17 \
+    -o "native/libs/dynamic/${ARCH}/magic-mount"
+    fi
+done
+

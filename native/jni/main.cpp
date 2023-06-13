@@ -6,7 +6,6 @@
 #include "utils.hpp"
 
 int log_fd = -1;
-bool enable_logging = false;
 static int mount_flags = 0;
 static bool verbose_logging = false;
 char **_argv;
@@ -14,7 +13,7 @@ int _argc;
 bool full_magic_mount = false;
 
 #define verbose_log(s, ...) { \
-if (verbose_logging) fprintf(stderr, "%-12s: " s, __VA_ARGS__); \
+if (verbose_logging) fprintf(stdin, "%-12s: " s, __VA_ARGS__); \
 LOGD("%-12s: " s, __VA_ARGS__); }
 
 static bool is_supported_fs(const char *dir) {
@@ -227,8 +226,7 @@ int main(int argc, char **argv)
                         "Use magic mount to combine DIR1, DIR2... and mount into DIR\n\n"
                         "-r            Recursive magic mount mountpoint under DIR1, DIR2... also\n"
                         "-n NAME       Give magic mount a nice name\n"
-                        "-v            Verbose magic mount to stderr\n"
-                        "-l [-/FILE]   Verbose magic mount to logd [-] or file\n"
+                        "-v [-/FILE]   Verbose magic mount to stdin [-] or file\n"
                         "-a            Always use magic mount for any case\n"
                         "-o [MNTFLAGS] Mount flags\n"
                         "\n", basename(argv[0]));
@@ -246,9 +244,9 @@ int main(int argc, char **argv)
                 mnt_name = argv[2];
                 argc--; argv++;
                 break;
-            } else if (argv_option[i] == 'l' && argv_option[i+1] == '\0') {
+            } else if (argv_option[i] == 'v' && argv_option[i+1] == '\0') {
                 if (strcmp(argv[2], "-") == 0) {
-                    enable_logging = true;
+                    verbose_logging = true;
                 } else {
                     if (log_fd >= 0)
                         break;
@@ -293,8 +291,6 @@ int main(int argc, char **argv)
                 }
                 argc--; argv++;
                 break;
-            } else if (argv_option[i] == 'v') {
-                verbose_logging = true;
             } else if (argv_option[i] == 'a') {
                 full_magic_mount = true;
             } else {

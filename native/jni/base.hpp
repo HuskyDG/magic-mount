@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include <string_view>
 #include <string>
-#include <selinux/selinux.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <libgen.h>
@@ -19,3 +18,4 @@
 #include <sys/vfs.h>
 #include <sys/mount.h>
 #include <string_view>
+#include <sys/xattr.h>

@@ -6,20 +6,28 @@ build_mode="${1:-release}"
 
 cd "$(dirname "$0")"
 
-plugin() {
-rm -rf "$1"
-git clone "$2" "$1"
-}
-#      <DIRECTORY>                       <PLUG-IN LINK>
-plugin ./native/jni/libcxx               http://github.com/huskydg/libcxx || exit 1
-plugin ./native/jni/external/selinux     https://github.com/topjohnwu/selinux || exit 1
-plugin ./native/jni/external/pcre        https://android.googlesource.com/platform/external/pcre || exit 1
+ANDROID_NDK_HOME=./android-ndk-r23b
+export PATH=${PATH}:${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin
 
-pushd native
-rm -fr libs obj
-debug_mode=1
-if [[ "$build_mode" == "release" ]]; then
-    debug_mode=0
-fi
-ndk-build -j4 NDK_DEBUG=$debug_mode
-popd
+rm -rf native/libs
+mkdir -p native/libs
+
+( cat << EOF
+arm64-v8a aarch64-linux-android31-clang++
+armeabi-v7a armv7a-linux-androideabi31-clang++
+x86 i686-linux-android31-clang++
+x86_64 x86_64-linux-android31-clang++
+EOF
+) | while read line; do
+    ARCH="$(echo $line | awk '{ print $1 }')"
+    CXX="$(echo $line | awk '{ print $2 }')"
+    if [ ! -z "$ARCH" ]; then
+        mkdir "native/libs/${ARCH}"
+        ${CXX} \
+    native/jni/main.cpp \
+    native/jni/logging.cpp native/jni/utils.cpp \
+    -static \
+    -std=c++17 \
+    -o "native/libs/${ARCH}/magic-mount"
+    fi
+done

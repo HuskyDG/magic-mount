@@ -6,20 +6,6 @@ OverlayFS style based on Magisk's Magic mount logic (basically bind mount) that 
 
 In short, this is OverlayFS re-implemented as magic mount logic. However, it doesn't support `upperdir` behavior found on OverlayFS for writable because it is actually just tmpfs + bind mounts.
 
-Usage:
-
-```
-usage: magic-mount [OPTION] DIR1 DIR2... DIR
-
-Use magic mount to combine DIR1, DIR2... and mount into DIR
-
--r            Merge content of mounts under DIR1, DIR2... also
--n NAME       Give magic mount a nice name
--v            Verbose magic mount to stderr
--l            Verbose magic mount to logd
--f FILE       Verbose magic mount to file
-```
-
 ## Modifying system partition with magic-mount
 
 ### Merge contents

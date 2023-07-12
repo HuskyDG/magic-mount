@@ -36,6 +36,12 @@ bool is_dir(const char *path, bool symlink_follow) {
            S_ISDIR(st.st_mode);
 }
 
+bool is_regfile(const char *path, bool symlink_follow) {
+    struct stat st;
+    return ((symlink_follow)? stat(path, &st) == 0 : lstat(path, &st) == 0) &&
+           S_ISREG(st.st_mode);
+}
+
 bool is_lnk(const char *path) {
     struct stat st;
     return lstat(path, &st) == 0 &&

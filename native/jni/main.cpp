@@ -219,15 +219,17 @@ int main(int argc, char **argv)
     const char *mnt_name = "tmpfs";
     const char *reason = "Invalid arguments";
     const char *real_dir = nullptr;
+    bool mount_file_as_tmpfs = false;
 
     first:
     if (argc < 3) {
-        fprintf(stderr, "usage: %s [OPTION] DIR1 DIR2... DIR\n\n"
-                        "Use magic mount to combine DIR1, DIR2... and mount into DIR\n\n"
+        fprintf(stderr, "usage: %s [OPTION] SRC... DEST\n\n"
+                        "Use magic mount to combine SRC... and mount into DIR\n\n"
                         "-r            Recursive magic mount mountpoint under DIR1, DIR2... also\n"
                         "-n NAME       Give magic mount a nice name\n"
                         "-v [-/FILE]   Verbose magic mount to stdout [-] or file\n"
                         "-a            Always use magic mount for any case\n"
+                        "-b            Clone file SRC into tmpfs and bind mount to DEST, max 2 arguments\n"
                         "-o [MNTFLAGS] Mount flags\n"
                         "\n", basename(argv[0]));
         return 1;
@@ -293,6 +295,8 @@ int main(int argc, char **argv)
                 break;
             } else if (argv_option[i] == 'a') {
                 full_magic_mount = true;
+            } else if (argv_option[i] == 'b') {
+                mount_file_as_tmpfs = true;
             } else {
                 fprintf(stderr, "Invalid options: [%s]\n", argv[1]);
                 return 1;
@@ -302,10 +306,15 @@ int main(int argc, char **argv)
         goto first;
     }
 
-    if (strcmp(argv[argc-1], "/dev") == 0 || !is_dir(argv[argc-1], true) || (real_dir = realpath(argv[argc-1], nullptr)) == nullptr) {
+    if (mount_file_as_tmpfs) {
+		if (argc > 3 || !is_regfile(argv[argc-1], true) || !is_regfile(argv[argc-2], true)) {
+            fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, argv[argc-1], reason);
+            return -1;
+		}
+    } else if (strcmp(argv[argc-1], "/dev") == 0 || !is_dir(argv[argc-1], true) || (real_dir = realpath(argv[argc-1], nullptr)) == nullptr) {
         fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, argv[argc-1], reason);
         return -1;
-    } 
+    }
 
     std::string tmp;
     do {
@@ -319,6 +328,18 @@ int main(int argc, char **argv)
         verbose_log("unable to setup workdir=[%s]\n", "error", tmp.data());
         reason = "Unable to create working directory";
         goto failed;
+    }
+    if (mount_file_as_tmpfs) {
+        auto tmpfile = tmp + "/file";
+        int in_fd = open(argv[1], O_RDONLY | O_NOATIME);
+        int out_fd = open(tmpfile.data(), O_RDWR | O_CREAT, 0666);
+        struct stat st{};
+        if (stat(argv[1], &st) || in_fd < 0 || out_fd < 0 || sendfile(out_fd, in_fd, nullptr, st.st_size) < 0 ||
+            clone_attr(argv[1], tmpfile.data()) ||
+            mount(tmpfile.data(), argv[2], nullptr, MS_BIND, nullptr)) 
+            goto failed;
+        mount(nullptr, argv[2], nullptr, MS_REMOUNT | mount_flags, nullptr);
+        goto success;
     }
 
     for (int i=1; i < argc-1; i++) {

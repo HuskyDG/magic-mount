@@ -19,3 +19,4 @@
 #include <sys/mount.h>
 #include <string_view>
 #include <sys/xattr.h>
+#include <sys/sendfile.h>

@@ -30,9 +30,9 @@ bool fexist(const char *path) {
 }
 	
 
-bool is_dir(const char *path) {
+bool is_dir(const char *path, bool symlink_follow) {
     struct stat st;
-    return lstat(path, &st) == 0 &&
+    return ((symlink_follow)? stat(path, &st) == 0 : lstat(path, &st) == 0) &&
            S_ISDIR(st.st_mode);
 }
 
@@ -44,7 +44,7 @@ bool is_lnk(const char *path) {
 
 bool mkdir_ensure(const char *path, int mode) {
     mkdir(path, mode);
-    return is_dir(path);
+    return is_dir(path, false);
 }
 
 int mkdirs(const char *path, int mode) {

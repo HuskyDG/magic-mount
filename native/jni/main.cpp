@@ -302,10 +302,10 @@ int main(int argc, char **argv)
         goto first;
     }
 
-    if (strcmp(argv[argc-1], "/dev") == 0 || !is_dir(argv[argc-1]) || (real_dir = realpath(argv[argc-1], nullptr)) == nullptr) {
+    if (strcmp(argv[argc-1], "/dev") == 0 || !is_dir(argv[argc-1], true) || (real_dir = realpath(argv[argc-1], nullptr)) == nullptr) {
         fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, argv[argc-1], reason);
         return -1;
-    }
+    } 
 
     std::string tmp;
     do {

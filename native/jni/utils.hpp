@@ -21,4 +21,6 @@ std::vector<std::string> split_ro(const std::string& str, const char delimiter);
 int getfilecon(const char *path, char **con);
 int setfilecon(const char *path, const char *con);
 void freecon(char *con);
+std::string fd_path(int fd);
+int fd_umount2(int fd, int mode);
 

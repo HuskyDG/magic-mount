@@ -189,3 +189,11 @@ void freecon(char *con) {
 	free(con);
 }
 
+std::string fd_path(int fd) {
+    return std::string("/proc/self/fd/") + std::to_string(fd);
+}
+
+int fd_umount2(int fd, int mode) {
+    return umount2(fd_path(fd).data(), mode);
+}
+

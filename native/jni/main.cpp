@@ -311,12 +311,13 @@ int main(int argc, char **argv)
             fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, argv[argc-1], reason);
             return -1;
 		}
-    } else if (strcmp(argv[argc-1], "/dev") == 0 || !is_dir(argv[argc-1], true) || (real_dir = realpath(argv[argc-1], nullptr)) == nullptr) {
+    } else if (strcmp(argv[argc-1], "/") == 0 || !is_dir(argv[argc-1], true) || (real_dir = realpath(argv[argc-1], nullptr)) == nullptr) {
         fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, argv[argc-1], reason);
         return -1;
     }
 
     std::string tmp;
+    int tmp_fd = -1;
     do {
         tmp = "/dev/.workdir_";
         tmp += random_strc(20);
@@ -329,6 +330,7 @@ int main(int argc, char **argv)
         reason = "Unable to create working directory";
         goto failed;
     }
+    tmp_fd = open(tmp.data(), O_PATH);
     if (mount_file_as_tmpfs) {
         auto tmpfile = tmp + "/file";
         int in_fd = open(argv[1], O_RDONLY | O_NOATIME);
@@ -392,13 +394,14 @@ int main(int argc, char **argv)
     verbose_log("mounted to %s\n", "magic_mount", real_dir);
 
     success:
-    umount2(tmp.data(), MNT_DETACH);
-    rmdir(tmp.data());
+    fd_umount2(tmp_fd, MNT_DETACH);
+    close(tmp_fd);
     return 0;
     
     failed:
     fprintf(stderr, "mount: '%s'->'%s': %s\n", mnt_name, real_dir, reason);
-    umount2(tmp.data(), MNT_DETACH);
+    fd_umount2(tmp_fd, MNT_DETACH);
+    close(tmp_fd);
     rmdir(tmp.data());
     return 1;
 }
